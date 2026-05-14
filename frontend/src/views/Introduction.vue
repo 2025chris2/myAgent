@@ -9,55 +9,64 @@ const router = useRouter()
 const content = ref('')
 
 const mdContent = `
-# 产品介绍
+# 项目总览
+
+一个 AI 智能对话平台，前后端分离架构。
 
 ---
 
-## 一、寻觅 App
+## 后端（Java 21 + Spring Boot 3.5.14 + Spring AI 1.1.5）
 
-寻觅是一款智能旅行助手应用，专为旅行爱好者和选择困难的用户打造。
+**核心框架**: Spring Boot + JPA + Security + Flyway + PostgreSQL + Redis + pgvector
 
-### 1. RAG（检索增强生成）
+### 分层架构
 
-服务器上内置了两类关于旅行的文档：
+| 层 | 关键文件 | 职责 |
+|---|---------|------|
+| **Controller** | AuthController, ConversationController, AiController | REST API，SSE 流式推送 |
+| **App** | PlanApp.java | 「寻觅聊天」模式，基于 DeepSeek ChatModel + RAG + 工具调用 |
+| **Agent** | BaseAgent → ReActAgent → ToolCallAgent → llongManus | 「Super Agent」模式，自研 ReAct 代理框架，手动控制工具调用循环 |
+| **Tools** | FileOperationTool, PDFGenerationTool, WebSearchTool, WebScrapingTool, TerminalOperationTool, ResourceDownloadTool, TerminateTool | 7 个 AI 可调用工具 |
+| **RAG** | PlanAppRAGCustomAdvisor, PlanAppDocumentLoader 等 | pgvector 向量检索 + 查询重写 |
+| **Security** | SecurityConfig, JwtTokenProvider, JwtAuthenticationFilter | JWT 无状态认证，BCrypt 密码加密 |
 
-- **旅行推荐与规划**：涵盖去哪旅行、旅行推荐、旅行前/旅行时/旅行后的安排，专为选择困难和规划困难的用户准备
-- **旅行相关问题库**：包含 **300+** 个热点问题，帮助用户提前应对各种状况，或在遇到问题时提供正确的抉择
+### 两种聊天模式
 
-### 2. MCP（图片搜索服务）
+- **PlanApp（寻觅聊天）**：旅行定制专家，支持同步/异步 SSE，有预设 System Prompt 和旅行文档 RAG
+- **Super Agent**：通用 AI 智能体，ReAct 循环（思考→行动），最多 20 步，SSE 推送 typed events（thinking / tool_call / tool_result / final_answer）
 
-小伙伴 **llong** 开发了一个图片搜索的 MCP 服务，本地部署，可以搜索用户想要搜索的内容。
+### 数据库
 
-### 3. Tool Call（工具调用）
-
-小伙伴开发了 **7** 个工具，让 AI 具备强大的实际操作能力：
-
-| 工具名称 | 功能描述 |
-|---------|---------|
-| **FileOperationTool** | 包含读和写文件操作，主要用于生成 Markdown 文件 |
-| **PDFGenerationTool** | 生成 PDF 文件 |
-| **TerminalOperationTool** | 终端操作工具，让 AI 可以操作服务器终端，适配 Linux 和 Windows |
-| **TerminateTool** | 让 AI 终止工具调用的工具 |
-| **WebSearchTool** | 使用 Tavily 搜索，内容更适配 AI，效果更好，速度更快 |
-| **WebScrapingTool** | 抓取网页内容，当搜索到符合的内容时进行深度解读，获取更完整的内容 |
-| **ResourceDownloadTool** | 源码下载工具，可下载代码、图片等，只要包含可访问的 URL 即可下载 |
-
-### 4. Vector（向量检索）
-
-除了 RAG 的向量检索外，当用户提问时，向量数据库会做相似度检索，取 **topK=3** 的相关文档片段，确保回答的准确性和相关性。
-
-### 5. 记忆机制
-
-寻觅 App 采用**滑动窗口记忆**，存储最近的 **20** 条信息，保持上下文窗口的精简高效。每个对话使用 **conversationID** 来区分，所有对话都会持久化存储到 **PostgreSQL** 数据库中。
+3 张表 — \`users\`（6位随机ID） → \`conversations\`（6位随机ID） → \`messages\`（自增ID，JSON 存储消息）
 
 ---
 
-## 二、Super Agent（llongAgent）
+## 前端（Vue 3 + Vite + Element Plus + Pinia）
 
-Super Agent 是 llong 开发的智能代理系统：
+**路由**: \`/login\`（登录/注册） ↔ \`/chat\`（主聊天页，需 JWT Token）
 
-- 采用**滑动窗口记忆**机制，每个 Agent 都拥有独立的记忆空间
-- 每次对话**不会**持久化存储到 PostgreSQL 数据库中，保证对话的隐私性和轻量化
+### 组件树
+
+\`\`\`
+App.vue → Chat.vue
+            ├── Sidebar.vue（会话列表，新建/删除）
+            └── ChatPanel.vue（模式切换 + 消息列表 + 输入框）
+                  ├── MessageList.vue（欢迎页 / 消息渲染）
+                  │     └── MessageBubble.vue（思考面板 + 内容 + 下载链接）
+                  └── InputArea.vue（文本输入 + 同步/异步切换 + 发送/停止）
+\`\`\`
+
+### Store 设计
+
+- **auth.js**：Token / 用户名持久化到 localStorage
+- **chat.js**：会话管理、消息管理、SSE 流式处理、双模式调度
+
+### 亮点
+
+- 自研 SSE 解析器（streamRequest），兼容 Spring SseEmitter 格式
+- 思考面板（think panel）：Agent 模式下展示推理过程（思考 / 工具调用 / 工具结果 / 错误）
+- 自动下载：Agent 生成文件后自动触发浏览器下载
+- 下载链接渲染：\`/api/files/download?file=...\` 自动转为可点击链接
 `
 
 onMounted(() => {
@@ -72,7 +81,7 @@ onMounted(() => {
         <el-icon><ArrowLeft /></el-icon>
         返回聊天
       </el-button>
-      <span class="header-title">产品介绍</span>
+      <span class="header-title">项目总览</span>
       <span class="header-spacer"></span>
     </div>
 

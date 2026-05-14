@@ -2,9 +2,11 @@ package com.tzl.llongagent.service;
 
 import cn.hutool.core.util.RandomUtil;
 import com.tzl.llongagent.entity.UserEntity;
+import com.tzl.llongagent.exception.AuthException;
 import com.tzl.llongagent.repository.UserRepository;
 import com.tzl.llongagent.security.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +20,7 @@ public class UserService {
 
     public String register(String username, String rawPassword) {
         if (userRepository.existsByUsername(username)) {
-            throw new RuntimeException("用户名已存在");
+            throw new AuthException("账号已被使用", HttpStatus.CONFLICT);
         }
 
         UserEntity user = new UserEntity();
@@ -33,10 +35,10 @@ public class UserService {
 
     public String login(String username, String rawPassword) {
         UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("用户名或密码错误"));
+                .orElseThrow(() -> new AuthException("请先注册", HttpStatus.UNAUTHORIZED));
 
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
-            throw new RuntimeException("用户名或密码错误");
+            throw new AuthException("账号或密码错误", HttpStatus.UNAUTHORIZED);
         }
 
         return jwtTokenProvider.generateToken(user.getId());

@@ -15,29 +15,29 @@ const mdContent = `
 
 ## RAG 检索增强生成
 
-内置丰富的旅行文档知识库，涵盖旅行规划、旅行推荐、旅行前中后安排，以及 300+ 热点旅行问题。结合向量相似度检索（topK=3），为 AI 提供精准的上下文支持。
+内置丰富的旅行文档知识库，涵盖旅行规划、旅行推荐、旅行前中后安排，以及 **300+** 热点旅行问题。结合向量相似度检索（topK=3），为 AI 提供精准的上下文支持。
 
 ---
 
 ## MCP 服务集成
 
-支持 MCP（Model Context Protocol）服务扩展。目前已集成图片搜索 MCP 服务，本地部署，快速响应用户的图片搜索需求。
+支持 MCP（Model Context Protocol）服务扩展。小伙伴 **llong** 开发了一个图片搜索的 MCP 服务，本地部署，可以快速响应用户的图片搜索需求。
 
 ---
 
 ## 工具调用（Tool Call）
 
-AI 可以自主调用以下 7 个工具完成复杂任务：
+AI 可以自主调用以下 **7** 个工具完成复杂任务：
 
-| 工具 | 功能 |
-|------|------|
-| **FileOperationTool** | 文件读写操作，支持生成 MD 文件 |
-| **PDFGenerationTool** | 生成 PDF 文档 |
-| **TerminalOperationTool** | 终端操作，适配 Linux / Windows |
-| **TerminateTool** | 终止工具调用 |
-| **WebSearchTool** | Tavily 搜索，适配 AI，速度快 |
-| **WebScrapingTool** | 网页内容深度抓取与解读 |
-| **ResourceDownloadTool** | 源码、图片等资源下载 |
+| 工具名称 | 功能描述 |
+|---------|---------|
+| **FileOperationTool** | 包含读和写文件操作，主要用于生成 Markdown 文件 |
+| **PDFGenerationTool** | 生成 PDF 文件 |
+| **TerminalOperationTool** | 终端操作工具，让 AI 可以操作服务器终端，适配 Linux 和 Windows |
+| **TerminateTool** | 让 AI 终止工具调用的工具 |
+| **WebSearchTool** | 使用 Tavily 搜索，内容更适配 AI，效果更好，速度更快 |
+| **WebScrapingTool** | 抓取网页内容，当搜索到符合的内容时进行深度解读，获取更完整的内容 |
+| **ResourceDownloadTool** | 源码下载工具，可下载代码、图片等，只要包含可访问的 URL 即可下载 |
 
 ---
 
@@ -47,10 +47,10 @@ AI 可以自主调用以下 7 个工具完成复杂任务：
 
 ---
 
-## 双模式对话
+## 双模式对话与记忆
 
-- **寻觅聊天模式**：持久化存储到 PostgreSQL，支持滑动窗口记忆（最近 20 条）
-- **Super Agent 模式**：独立 Agent 记忆，不持久化，保护对话隐私
+- **寻觅聊天模式**：持久化存储到 PostgreSQL，支持滑动窗口记忆（最近 **20** 条），通过 **conversationID** 区分对话
+- **Super Agent 模式**：独立 Agent 记忆空间，不持久化存储，保护对话隐私
 `
 
 onMounted(() => {
