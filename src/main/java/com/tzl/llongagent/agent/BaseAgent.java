@@ -1,0 +1,242 @@
+package com.tzl.llongagent.agent;
+
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
+import com.tzl.llongagent.agent.model.AgentState;
+import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+/***
+ * 抽象的基础代理类，用于管理代理状态和执行流程
+ * 提供状态转换，内存管理和基于步骤的执行循环的基础功能
+ * 子类必须实现 step 方法
+ */
+@Slf4j
+@Data
+public abstract class BaseAgent {
+
+    // Agent 的名字
+    private String name;
+
+    // 推送流式信息的工具
+    protected SseEmitter sseEmitter;
+
+    // 系统提示词
+    private String SYSTEM_PROMPT;
+
+    // 引导智能体下一步的提示词
+    private String NEXT_STEP_PROMPT;
+
+    // agent 的状态,默认是空闲
+    private AgentState state = AgentState.IDLE;
+
+    // 当前步骤
+    private int currentStep = 0;
+
+    // 最大的执行次数
+    private int maxStep = 20;
+
+    // LLM 大模型
+    private ChatClient deepseekChatClient;
+
+    // 大模型的上下文 memory 记忆(需自己维护)
+    private List<Message> messageList = new ArrayList<>();
+
+    /***
+     * 运行代理
+     * @param userMessage 用户的提示词
+     * @param conversationId 用户的对话ID
+     * @return 执行结果
+     */
+    public String run(String userMessage, String conversationId) {
+
+        // 1.基础校验
+        // 对 Agent 状态和提示词合法性 进行判断
+        if (this.state != AgentState.IDLE)
+            throw new RuntimeException("Agent cannot run agent form this state :" + state);
+        if (StrUtil.isBlank(userMessage))
+            throw new RuntimeException("Agent cannot run with empty userMessage!");
+        if (StrUtil.isBlank(conversationId))
+            throw new RuntimeException("Agent need your conversationId!");
+
+        // 2.修改状态,避免冲突
+        this.state = AgentState.RUNNING;
+
+        // 3.记录上下文信息
+        messageList.add(new UserMessage(userMessage));
+
+        // 4.保存结果列表(大模型返回的是String, 且模型只认String)
+        List<String> results = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < maxStep && state != AgentState.FINISHED; i++) {
+                int stepNumber = i + 1;
+                currentStep = stepNumber;
+                log.info("Executing step {}/{}", stepNumber, maxStep);
+                // 单步执行结果
+                String stepResult = this.step();
+                String result = "Step" + stepNumber + ":" + stepResult;
+                results.add(result);
+            }
+
+            if (currentStep == maxStep) {
+                this.state = AgentState.FINISHED;
+                results.add("Terminated : Agent has reached max step:(" + maxStep + ")");
+                log.info("Reached max step" + maxStep);
+            }
+
+            return String.join("\n", results);
+        }catch(Exception e) {
+            this.state = AgentState.ERROR;
+            log.error("Agent executing error",e);
+            return "执行错误" + e.getMessage();
+        } finally {
+          persistMessages(conversationId);
+          cleanUp();
+        }
+    }
+
+    /***
+     * 运行代理
+     * @param userMessage 用户的提示词
+     * @param conversationId 对话ID
+     * @return 执行结果
+     */
+    public SseEmitter runStream(String userMessage, String conversationId) {
+
+        // 创建一个连接时间较长的 SseEmitter
+        SseEmitter emitter = new SseEmitter(300000L);
+        this.sseEmitter = emitter;
+
+        // 使用线程异步处理,避免阻塞主线程
+        CompletableFuture.runAsync(() -> {
+
+            // 判断 Agent 的状态
+            if(this.state != AgentState.IDLE) {
+                sendSseEvent("error", "无法运行非空闲状态的 Agent, 此Agent 的状态: " + this.state);
+                emitter.complete();
+                return;
+            }
+
+            // 判断提示词
+            if(StrUtil.isBlank(userMessage)) {
+                sendSseEvent("error", "无法运行空提示词!");
+                emitter.complete();
+                return;
+            }
+
+            // 判断 Id
+            if(StrUtil.isBlank(conversationId)) {
+                sendSseEvent("error", "无法运行 Agent 和空Id");
+                emitter.complete();
+                return;
+            }
+
+            // 修改 Agent 的状态, 防止多线程调用同一行 Agent
+            this.state = AgentState.RUNNING;
+
+            // 记录上下文消息
+            messageList.add(new UserMessage(userMessage));
+
+            // 创建一个列表，用于保存结果列表
+            List<String> results = new ArrayList<>();
+
+            // 使用 try - catch, 防止意外报错
+            try{
+                for(int i = 0 ; i < maxStep && state != AgentState.FINISHED ; i++) {
+                    int stepNumber = i + 1;
+                    // 记录当前的步骤
+                    currentStep = stepNumber;
+
+                    log.info("Executing Step {}/{}", stepNumber, maxStep);
+
+                    // 调用 stepStream 进行单步推理，内部已发送 typed SSE 事件
+                    String stepResult = stepStream();
+                    String result = "Step " + stepNumber + ":" + stepResult;
+                    results.add(result);
+                }
+
+                if(currentStep == maxStep) {
+                    state = AgentState.FINISHED;
+                    results.add("Terminaed: Reached this max step: " + maxStep);
+                    log.info("Reached maxStep " + maxStep);
+                    sendSseEvent("error", "Reached max step: " + maxStep);
+                }
+
+                // 发送完成事件，然后关闭 SSE
+                sendSseEvent("done", "");
+                emitter.complete();
+            } catch(Exception e) {
+                state = AgentState.ERROR;
+                log.error("Error executing agent " + e);
+                sendSseEvent("error", "执行错误: " + e.getMessage());
+                emitter.complete();
+            }finally {
+                persistMessages(conversationId);
+                cleanUp();
+            }
+        });
+
+        // 设置超时回调
+        emitter.onTimeout(() -> {
+            state = AgentState.ERROR;
+            log.error("SseEmitter connect timeout!");
+            cleanUp();
+        });
+
+        // 设置完成回调
+        emitter.onCompletion(() -> {
+            if(state == AgentState.RUNNING)
+                state = AgentState.ERROR;
+            cleanUp();
+            log.info("SSE connect completed!");
+        });
+
+        return emitter;
+    }
+
+    protected void sendSseEvent(String type, String data) {
+        if(sseEmitter != null) {
+            try{
+                Map<String, String> event = new HashMap<>();
+                event.put("type", type);
+                event.put("data", data);
+                String json = JSONUtil.toJsonStr(event);
+                sseEmitter.send(SseEmitter.event().name("message").data(json, MediaType.APPLICATION_JSON));
+                log.info("BaseAgent 的推送成功!");
+            } catch(IOException e) {
+                sseEmitter.completeWithError(e);
+                log.error("BaseAgent 的推送失败: {}",e.getMessage());
+            }
+        }
+    }
+
+    public abstract String step();
+
+    public abstract String stepStream();
+
+    protected void persistMessages(String conversationId) {
+        // default no-op, override in subclasses to persist messages
+    }
+
+     void cleanUp(){
+        state = AgentState.IDLE;
+        messageList.clear();
+        currentStep = 0;
+    }
+
+
+
+}

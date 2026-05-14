@@ -1,0 +1,20 @@
+[Unit]
+Description=llongAgent Backend Service
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=llongagent
+WorkingDirectory=/opt/llongagent
+ExecStart=/usr/bin/java -jar /opt/llongagent/llongAgent.jar --spring.profiles.active=prod
+ExecStop=/bin/kill -15 $MAINPID
+Restart=on-failure
+RestartSec=10
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=llongagent
+
+[Install]
+WantedBy=multi-user.target

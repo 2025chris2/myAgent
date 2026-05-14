@@ -1,0 +1,105 @@
+file:
+  save-dir: /opt/llongagent/data
+
+jwt:
+  secret: ""
+  expiration: 86400000
+
+spring:
+  mvc:
+    async:
+      request-timeout: -1
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+  mail:
+    host: smtp.163.com
+    port: 465
+    username:
+    password:
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  application:
+    name: llongAgent
+  datasource:
+    url: jdbc:postgresql://localhost:5432/llongAgent
+    username:
+    password:
+    driver-class-name: org.postgresql.Driver
+  ai:
+    deepseek:
+      api-key:
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          thinking: false
+          model: deepseek-reasoner
+          temperature: 0.0
+    dashscope:
+      api-key:
+      embedding:
+        options:
+          model: text-embedding-v4
+          dimensions: 1024
+    mcp:
+      client:
+        enabled: true
+        stdio:
+          connections:
+            image-search:
+              command: java
+              args:
+                - -Dspring.ai.mcp.server.stdio=true
+                - -Dspring.main.web-application-type=none
+                - -Dlogging.pattern.console=
+                - -jar
+                - /opt/llongagent/mcp-servers/llong-image-search-mcp-server-0.0.1-SNAPSHOT.jar
+
+    vectorstore:
+      pgvector:
+        index-type: hnsw
+        distance-type: cosine_distance
+        dimensions: 1024
+        max-document-batch-size: 10
+        remove-existing-vector-store-table: false
+        schema-validation: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: "default"
+      paths-to-match: "/**"
+      packages-to-scan: com.tzl.llongagent.controller
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+tavily:
+  apikey:
+  url: https://api.tavily.com/search

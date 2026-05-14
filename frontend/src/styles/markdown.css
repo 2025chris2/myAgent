@@ -1,0 +1,83 @@
+.markdown-body {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text-dark, #333);
+}
+
+.markdown-body h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text-dark, #333);
+}
+
+.markdown-body h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 32px;
+  margin-bottom: 16px;
+  color: var(--primary, #8B7EC8);
+  padding-bottom: 8px;
+}
+
+.markdown-body h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  color: var(--text-dark, #333);
+}
+
+.markdown-body p {
+  margin-bottom: 12px;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 24px;
+  margin-bottom: 12px;
+}
+
+.markdown-body li {
+  margin-bottom: 6px;
+}
+
+.markdown-body strong {
+  color: var(--primary-dark, #6B5FA0);
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border, #E8E0F0);
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--primary-light, #E8E0F0);
+  font-weight: 600;
+}
+
+.markdown-body tr:nth-child(even) {
+  background: var(--bg-page, #F5F0FA);
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border, #E8E0F0);
+  margin: 24px 0;
+}
+
+.markdown-body code {
+  background: var(--bg-page, #F5F0FA);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', monospace;
+  font-size: 13px;
+}

@@ -1,0 +1,111 @@
+/* ===== CSS Variables - Lavender Theme ===== */
+:root {
+  --primary: #8B7EC8;
+  --primary-light: #E8E0F0;
+  --primary-dark: #6B5FA0;
+  --primary-hover: #7B6EB8;
+  --bg-page: #F5F0FA;
+  --bg-white: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --text-dark: #333333;
+  --text-gray: #999999;
+  --text-light: #666666;
+  --bubble-user: #8B7EC8;
+  --bubble-user-text: #FFFFFF;
+  --bubble-ai: #FFFFFF;
+  --bubble-ai-border: #E8E0F0;
+  --border: #E8E0F0;
+  --shadow: 0 2px 12px rgba(139, 126, 200, 0.1);
+  --shadow-lg: 0 4px 24px rgba(139, 126, 200, 0.15);
+}
+
+/* ===== Global Reset ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  color: var(--text-dark);
+  background: var(--bg-page);
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D0C8E8;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-light);
+}
+
+/* ===== Element Plus Theme Override ===== */
+:root {
+  --el-color-primary: #8B7EC8;
+  --el-color-primary-light-3: #A99AD8;
+  --el-color-primary-light-5: #C5B8E8;
+  --el-color-primary-light-7: #DCD0F0;
+  --el-color-primary-light-8: #E8E0F0;
+  --el-color-primary-light-9: #F2ECF8;
+  --el-color-primary-dark-2: #6B5FA0;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #8B7EC8;
+  --el-button-border-color: #8B7EC8;
+  --el-button-hover-bg-color: #7B6EB8;
+  --el-button-hover-border-color: #7B6EB8;
+  --el-button-active-bg-color: #6B5FA0;
+  --el-button-active-border-color: #6B5FA0;
+}
+
+.el-button--primary.is-plain {
+  --el-button-text-color: #8B7EC8;
+  --el-button-bg-color: #F2ECF8;
+  --el-button-border-color: #8B7EC8;
+}
+
+.el-tabs__active-bar {
+  background-color: #8B7EC8 !important;
+}
+.el-tabs__item.is-active {
+  color: #8B7EC8 !important;
+}
+.el-tabs__item:hover {
+  color: #8B7EC8 !important;
+}
+
+.el-radio__input.is-checked .el-radio__inner {
+  background-color: #8B7EC8 !important;
+  border-color: #8B7EC8 !important;
+}
+.el-radio__input.is-checked + .el-radio__label {
+  color: #8B7EC8 !important;
+}
+
+/* ===== Utility ===== */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
