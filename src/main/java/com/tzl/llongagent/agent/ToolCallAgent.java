@@ -9,7 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -63,11 +62,6 @@ public class ToolCallAgent extends ReActAgent {
      */
     @Override
     public boolean think() {
-        // 1.校验提示词，拼接用户提示词
-        if(StrUtil.isNotBlank(getNEXT_STEP_PROMPT())) {
-            Message message = new UserMessage(getNEXT_STEP_PROMPT());
-            getMessageList().add(message);
-        }
 
         // 获取维护的上下文记忆列表,方便操作
         List<Message> messageList = getMessageList();
@@ -88,8 +82,9 @@ public class ToolCallAgent extends ReActAgent {
 
             this.toolCallChatResponse = chatResponse;
 
-            // 助手工具
-            assert chatResponse != null;
+            if (chatResponse == null) {
+                throw new IllegalStateException("ChatClient returned null response");
+            }
             AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
 
             // 获取要调用的工具
@@ -109,6 +104,9 @@ public class ToolCallAgent extends ReActAgent {
             // 如果不需要调用工具
             if(toolCalls.isEmpty()) {
 
+                this.finalAnswer = result;
+                setState(AgentState.FINISHED);
+
                 // 由于我们劫持了此次 AI 的返回信息,并进行了一系列操作
                 // 当不需要调用工具时, 手动添加 AI 的回复消息进入 上下文列表中
                 getMessageList().add(assistantMessage);
@@ -123,12 +121,14 @@ public class ToolCallAgent extends ReActAgent {
 
         }catch (Exception e) {
 
-            log.info(getName() + "的思考过程遇到了问题" + e.getMessage());
+            log.error(getName() + "的思考过程遇到了问题", e);
+
+            this.finalAnswer = "AI 处理时遇到了问题: " + e.getMessage();
 
             // 如果报错也是 AI 的回答，需要以 AI 的身份添加进 上下文消息列表中
             messageList.add(new AssistantMessage("AI 处理时遇到了问题"));
 
-            // 默认是false，既不调用工具，因为报错了
+            setState(AgentState.FINISHED);
             return false;
         }
     }
@@ -140,7 +140,7 @@ public class ToolCallAgent extends ReActAgent {
     @Override
     public String act() {
 
-        if(!toolCallChatResponse.hasToolCalls())
+        if(toolCallChatResponse == null || !toolCallChatResponse.hasToolCalls())
             return "不需要调用工具";
 
         // 在 UserMessage和ChatClient中间的一层,Prompt = 上下文加 ChatOptions
@@ -152,15 +152,26 @@ public class ToolCallAgent extends ReActAgent {
         // 记录消息上下文
         // 记录消息上下文，conversationHistory 已经包含了助手消息和工具调用返回的结果
         setMessageList(toolExecutionResult.conversationHistory());
-        ToolResponseMessage toolResponseMessage = (ToolResponseMessage) CollUtil.getLast(toolExecutionResult.conversationHistory());
+
+        Object lastMessage = CollUtil.getLast(toolExecutionResult.conversationHistory());
+        if (!(lastMessage instanceof ToolResponseMessage toolResponseMessage)) {
+            log.error("conversationHistory 最后一条消息不是 ToolResponseMessage: {}", lastMessage);
+            setState(AgentState.FINISHED);
+            return "工具执行结果解析失败";
+        }
 
         // 判断是否调用了终止工具
         boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
                 .anyMatch(response -> response.name().equals("doTerminate"));
 
         // 如果调用了终止工具，那么必须修改本 Agent 的状态
-        if(terminateToolCalled)
+        if(terminateToolCalled) {
+            String finalText = toolCallChatResponse.getResult().getOutput().getText();
+            if (StrUtil.isNotBlank(finalText)) {
+                this.finalAnswer = finalText;
+            }
             setState(AgentState.FINISHED);
+        }
 
         // 从工具调用结束后的信息中，格式化数据
         String results = toolResponseMessage.getResponses().stream()
@@ -177,11 +188,6 @@ public class ToolCallAgent extends ReActAgent {
 
     @Override
     public boolean thinkStream() {
-         // 1.校验提示词，拼接用户提示词
-        if(StrUtil.isNotBlank(getNEXT_STEP_PROMPT())) {
-            Message message = new UserMessage(getNEXT_STEP_PROMPT());
-            getMessageList().add(message);
-        }
 
         // 获取维护的上下文记忆列表,方便操作
         List<Message> messageList = getMessageList();
@@ -202,8 +208,9 @@ public class ToolCallAgent extends ReActAgent {
 
             this.toolCallChatResponse = chatResponse;
 
-            // 助手工具
-            assert chatResponse != null;
+            if (chatResponse == null) {
+                throw new IllegalStateException("ChatClient returned null response");
+            }
             AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
 
             String result = assistantMessage.getText();
@@ -250,20 +257,23 @@ public class ToolCallAgent extends ReActAgent {
 
         }catch (Exception e) {
 
-            log.info(getName() + "的思考过程遇到了问题" + e.getMessage());
+            log.error(getName() + "的思考过程遇到了问题", e);
+
+            this.finalAnswer = "AI 处理时遇到了问题: " + e.getMessage();
 
             // 如果报错也是 AI 的回答，需要以 AI 的身份添加进 上下文消息列表中
             messageList.add(new AssistantMessage("AI 处理时遇到了问题"));
 
-            // 默认是false，既不调用工具，因为报错了
+            setState(AgentState.FINISHED);
+            sendSseEvent("error", "思考过程出错");
             return false;
         }
     }
 
     @Override
-    public String actSteam() {
+    public String actStream() {
 
-        if(!toolCallChatResponse.hasToolCalls())
+        if(toolCallChatResponse == null || !toolCallChatResponse.hasToolCalls())
             return "不需要调用工具";
 
         // 在 UserMessage和ChatClient中间的一层,Prompt = 上下文加 ChatOptions
@@ -275,7 +285,14 @@ public class ToolCallAgent extends ReActAgent {
         // 记录消息上下文
         // 记录消息上下文，conversationHistory 已经包含了助手消息和工具调用返回的结果
         setMessageList(toolExecutionResult.conversationHistory());
-        ToolResponseMessage toolResponseMessage = (ToolResponseMessage) CollUtil.getLast(toolExecutionResult.conversationHistory());
+
+        Object lastMessage = CollUtil.getLast(toolExecutionResult.conversationHistory());
+        if (!(lastMessage instanceof ToolResponseMessage toolResponseMessage)) {
+            log.error("conversationHistory 最后一条消息不是 ToolResponseMessage: {}", lastMessage);
+            setState(AgentState.FINISHED);
+            sendSseEvent("error", "工具执行结果解析失败");
+            return "工具执行结果解析失败";
+        }
 
         // 判断是否调用了终止工具
         boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
@@ -285,6 +302,7 @@ public class ToolCallAgent extends ReActAgent {
         if(terminateToolCalled) {
             String finalText = toolCallChatResponse.getResult().getOutput().getText();
             if(StrUtil.isNotBlank(finalText)) {
+                this.finalAnswer = finalText;
                 sendSseEvent("final_answer", finalText);
             }
             setState(AgentState.FINISHED);

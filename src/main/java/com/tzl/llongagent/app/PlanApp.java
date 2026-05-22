@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.deepseek.DeepSeekChatModel;
@@ -28,11 +29,14 @@ public class PlanApp {
     @Resource
     private ToolCallback[] allTools;
 
+    // 下面的两个存储的作用域不同！
+    // VectorStore 是为了向量化 MD 文档而服务的
     @Resource
     private VectorStore pgVectorVectorStore;
 
+    // ChatMemoryRepository 是为了聊天记忆服务的
     @Resource
-    private PgChatMemoryRepository pgChatMemoryRepository;
+    private ChatMemoryRepository pgChatMemoryRepository;
 
     @Resource
     private PlanAppQueryRewrite queryRewrite;
@@ -41,7 +45,7 @@ public class PlanApp {
     private final ChatClient deepseekChatClient;
 
     public PlanApp(DeepSeekChatModel deepSeekChatModel,
-                   PgChatMemoryRepository chatMemoryRepository) {
+                   PgChatMemoryRepository pgchatMemoryRepository) {
 
         String SYSTEM_PROMPT = """
                 你叫EternalChristmas,是一位全能AI助手，旨在解决用户提出的任何任务。你拥有各种工具可以调用。
@@ -57,7 +61,7 @@ public class PlanApp {
                   - **预算参考**：给出门票、交通、餐饮、住宿的大致费用区间。
                   - **注意事项**：结合季节和地点的特殊提醒（如冬季演出停演、山路防滑等）。
                 4. **语言风格**：亲切、实用，像朋友在给你做行程，避免干巴巴的列表。
-                5. **工具汇报**: 每次回答时，如果用户没有调用工具(除了doWebSearch)，就告诉用户有哪些工具可以用。
+                5. **工具汇报**: 每次回答时，如果用户没有调用工具，就告诉用户有哪些工具可以用。
 
                 当你生成文件（PDF、Markdown等）时，你必须在最终回复中包含可点击的下载链接。
                 下载链接基础URL: http://8.147.64.213
@@ -71,16 +75,16 @@ public class PlanApp {
         // ReReadingAdvisor
         ReReadingAdvisor reReadingAdvisor = new ReReadingAdvisor();
 
-        // 日志打印顾问
+        // 自定义的日志打印顾问
         llongLoggerAdvisor llongLoggerAdvisor = new llongLoggerAdvisor();
 
         // 聊天记忆存储仓库
-        ChatMemory redisChatMemory = MessageWindowChatMemory.builder()
-                .chatMemoryRepository(chatMemoryRepository)
+        ChatMemory pgChatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(pgchatMemoryRepository)
                 .maxMessages(20)
                 .build();
 
-        MessageChatMemoryAdvisor chatMemoryAdvisor = MessageChatMemoryAdvisor.builder(redisChatMemory)
+        MessageChatMemoryAdvisor chatMemoryAdvisor = MessageChatMemoryAdvisor.builder(pgChatMemory)
                 .build();
 
         deepseekChatClient = ChatClient.builder(deepSeekChatModel)
@@ -90,7 +94,6 @@ public class PlanApp {
                 // 较轻的 顾问链
                 .defaultAdvisors(chatMemoryAdvisor, llongLoggerAdvisor)
                 .build();
-
 
     }
 
@@ -108,13 +111,15 @@ public class PlanApp {
         return content;
     }
 
+    // 结构化输出
     // 添加public属性，让别的包也能访问
     public record PlanReport(String title, List<String> suggestions){
 
     }
 
     public PlanReport doChatWithReport(String userMessage, String conversationId) {
-        com.tzl.llongagent.app.PlanApp.PlanReport report = deepseekChatClient.prompt()
+        com.tzl.llongagent.app.PlanApp.PlanReport report = deepseekChatClient
+                .prompt()
                 .system("生成:{地点}旅行报告,报告内容：行程建议列表")
                 .user(userMessage)
                 .advisors(
@@ -129,10 +134,10 @@ public class PlanApp {
     public String doChatWithPgSql(String userMessage, String conversationId){
 
         // 查询重写:重写是重写用户的提问，所以这里在用户发送消息前，进行改写
-//        String reWrittenQuery = queryRewrite.doQueryRewrite(userMessage);
+        String reWrittenQuery = queryRewrite.doQueryRewrite(userMessage);
 
         ChatResponse chatResponse = deepseekChatClient.prompt()
-                .user(userMessage)
+                .user(reWrittenQuery)
                 .advisors(PlanAppRAGCustomAdvisor.createPlanAppRAGCustomAdvisor(pgVectorVectorStore))
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, conversationId))
                 .call()

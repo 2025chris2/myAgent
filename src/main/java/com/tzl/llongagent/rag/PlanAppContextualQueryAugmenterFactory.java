@@ -16,7 +16,6 @@ public class PlanAppContextualQueryAugmenterFactory {
 //      18 -                有问题可以联系唐子龙小伙伴,Q:2773604953
 //      19 -                """);
 //      14          return ContextualQueryAugmenter.builder()
-//              21 -                .allowEmptyContext(false)
 //      22 -                .emptyContextPromptTemplate(emptyContextPromptTemplate)
 //      15 +                .allowEmptyContext(true)
 //      16                  .build();

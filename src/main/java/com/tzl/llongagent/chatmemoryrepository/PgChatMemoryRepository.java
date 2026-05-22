@@ -19,17 +19,17 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PgChatMemoryRepository implements ChatMemoryRepository {
 
+    // 由于打了 @RequiredArgsConstructor 注解，使 MessageRepository 可以自动注入
     private final MessageRepository messageRepository;
 
     @Override
     public List<String> findConversationIds() {
-        return List.of();
+        return messageRepository.findAllConversationIds();
     }
 
     @Override
     public List<Message> findByConversationId(String conversationId) {
         List<MessageEntity> entities = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
-
         List<Message> messages = new ArrayList<>();
         for (MessageEntity entity : entities) {
             messages.add(deserializeMessage(entity.getContent(), entity.getMessageType()));
@@ -37,11 +37,16 @@ public class PgChatMemoryRepository implements ChatMemoryRepository {
         return messages;
     }
 
+    // 先删后查，保持数据库与前端展示的数据一致性
+    // @Transactional 保证 原子性与安全性
     @Override
     @Transactional
     public void saveAll(String conversationId, List<Message> messages) {
+
+        // 先删除原来的信息
         messageRepository.deleteByConversationId(conversationId);
 
+        // 处理传过来的 Message，对其进行处理再存储
         List<MessageEntity> entities = messages.stream()
                 .map(msg -> {
                     MessageEntity entity = new MessageEntity();
@@ -55,12 +60,14 @@ public class PgChatMemoryRepository implements ChatMemoryRepository {
         messageRepository.saveAll(entities);
     }
 
+    // 配合上面的方法，保证数据的安全
     @Override
     @Transactional
     public void deleteByConversationId(String conversationId) {
         messageRepository.deleteByConversationId(conversationId);
     }
 
+    // 反序列化，读取数据库中存储的信息
     private Message deserializeMessage(String json, String messageType) {
         JSONObject obj = JSON.parseObject(json);
         String text = obj.getString("text");

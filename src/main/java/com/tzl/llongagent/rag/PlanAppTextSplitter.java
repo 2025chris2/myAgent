@@ -9,6 +9,7 @@ import java.util.List;
 @Component
 public class PlanAppTextSplitter {
 
+    // 基于　Token　的文档切分器
     public List<Document> splitDocuments(List<Document> documents) {
         TokenTextSplitter splitter = TokenTextSplitter.builder()
                 .withChunkSize(400)

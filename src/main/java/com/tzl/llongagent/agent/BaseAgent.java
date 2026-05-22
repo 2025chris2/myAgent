@@ -22,6 +22,8 @@ import java.util.concurrent.CompletableFuture;
  * 抽象的基础代理类，用于管理代理状态和执行流程
  * 提供状态转换，内存管理和基于步骤的执行循环的基础功能
  * 子类必须实现 step 方法
+ * 
+ * 这里的父类只做声明和定义，具体由子类来实现和填充
  */
 @Slf4j
 @Data
@@ -31,6 +33,7 @@ public abstract class BaseAgent {
     private String name;
 
     // 推送流式信息的工具
+    // 这里不写为 private ,原因：子类用会更便捷，不用先 getSseEmitter() 再 send()
     protected SseEmitter sseEmitter;
 
     // 系统提示词
@@ -40,7 +43,7 @@ public abstract class BaseAgent {
     private String NEXT_STEP_PROMPT;
 
     // agent 的状态,默认是空闲
-    private AgentState state = AgentState.IDLE;
+    private volatile AgentState state = AgentState.IDLE;
 
     // 当前步骤
     private int currentStep = 0;
@@ -48,7 +51,11 @@ public abstract class BaseAgent {
     // 最大的执行次数
     private int maxStep = 20;
 
+    // 防止 cleanUp() 被多次调用
+    private volatile boolean cleaned = false;
+
     // LLM 大模型
+    // 这里只做 声明，由子类传入大模型，解耦
     private ChatClient deepseekChatClient;
 
     // 大模型的上下文 memory 记忆(需自己维护)
@@ -73,35 +80,51 @@ public abstract class BaseAgent {
 
         // 2.修改状态,避免冲突
         this.state = AgentState.RUNNING;
+        this.cleaned = false;
 
         // 3.记录上下文信息
         messageList.add(new UserMessage(userMessage));
 
-        // 4.保存结果列表(大模型返回的是String, 且模型只认String)
+        // 4.添加下一步引导提示词（仅一次）
+        if (StrUtil.isNotBlank(getNEXT_STEP_PROMPT())) {
+            messageList.add(new UserMessage(getNEXT_STEP_PROMPT()));
+        }
+
+        // 5.保存结果列表(大模型返回的是 String , 且模型只认 String )
         List<String> results = new ArrayList<>();
 
         try {
+            // 在 step()中，子类实现时，有可能把 state 设为 AgentState.FINISHED
             for (int i = 0; i < maxStep && state != AgentState.FINISHED; i++) {
                 int stepNumber = i + 1;
                 currentStep = stepNumber;
                 log.info("Executing step {}/{}", stepNumber, maxStep);
                 // 单步执行结果
                 String stepResult = this.step();
-                String result = "Step" + stepNumber + ":" + stepResult;
+                String result = "Step " + stepNumber + ":" + stepResult;
                 results.add(result);
             }
 
-            if (currentStep == maxStep) {
+            if (currentStep == maxStep && state != AgentState.FINISHED) {
                 this.state = AgentState.FINISHED;
-                results.add("Terminated : Agent has reached max step:(" + maxStep + ")");
-                log.info("Reached max step" + maxStep);
+                results.add("Terminated: Agent has reached max step: (" + maxStep + ")");
+                log.info("Reached max step " + maxStep);
             }
 
+            // 追加最终答案
+            String finalAnswer = getFinalAnswer();
+            if (StrUtil.isNotBlank(finalAnswer)) {
+                results.add("Final Answer: " + finalAnswer);
+            }
+
+            // 这里把 String 列表，转换为 String, 用\n来拼接
             return String.join("\n", results);
+            
         }catch(Exception e) {
             this.state = AgentState.ERROR;
             log.error("Agent executing error",e);
-            return "执行错误" + e.getMessage();
+            results.add("执行错误: " + e.getMessage());
+            return String.join("\n", results);
         } finally {
           persistMessages(conversationId);
           cleanUp();
@@ -127,6 +150,7 @@ public abstract class BaseAgent {
             if(this.state != AgentState.IDLE) {
                 sendSseEvent("error", "无法运行非空闲状态的 Agent, 此Agent 的状态: " + this.state);
                 emitter.complete();
+                cleanUp();
                 return;
             }
 
@@ -134,6 +158,7 @@ public abstract class BaseAgent {
             if(StrUtil.isBlank(userMessage)) {
                 sendSseEvent("error", "无法运行空提示词!");
                 emitter.complete();
+                cleanUp();
                 return;
             }
 
@@ -141,14 +166,21 @@ public abstract class BaseAgent {
             if(StrUtil.isBlank(conversationId)) {
                 sendSseEvent("error", "无法运行 Agent 和空Id");
                 emitter.complete();
+                cleanUp();
                 return;
             }
 
             // 修改 Agent 的状态, 防止多线程调用同一行 Agent
             this.state = AgentState.RUNNING;
+            this.cleaned = false;
 
             // 记录上下文消息
             messageList.add(new UserMessage(userMessage));
+
+            // 添加下一步引导提示词（仅一次）
+            if (StrUtil.isNotBlank(getNEXT_STEP_PROMPT())) {
+                messageList.add(new UserMessage(getNEXT_STEP_PROMPT()));
+            }
 
             // 创建一个列表，用于保存结果列表
             List<String> results = new ArrayList<>();
@@ -156,6 +188,7 @@ public abstract class BaseAgent {
             // 使用 try - catch, 防止意外报错
             try{
                 for(int i = 0 ; i < maxStep && state != AgentState.FINISHED ; i++) {
+                    
                     int stepNumber = i + 1;
                     // 记录当前的步骤
                     currentStep = stepNumber;
@@ -168,9 +201,9 @@ public abstract class BaseAgent {
                     results.add(result);
                 }
 
-                if(currentStep == maxStep) {
+                if(currentStep == maxStep && state != AgentState.FINISHED) {
                     state = AgentState.FINISHED;
-                    results.add("Terminaed: Reached this max step: " + maxStep);
+                    results.add("Terminated: Reached max step: " + maxStep);
                     log.info("Reached maxStep " + maxStep);
                     sendSseEvent("error", "Reached max step: " + maxStep);
                 }
@@ -180,7 +213,7 @@ public abstract class BaseAgent {
                 emitter.complete();
             } catch(Exception e) {
                 state = AgentState.ERROR;
-                log.error("Error executing agent " + e);
+                log.error("Error executing agent", e);
                 sendSseEvent("error", "执行错误: " + e.getMessage());
                 emitter.complete();
             }finally {
@@ -207,6 +240,9 @@ public abstract class BaseAgent {
         return emitter;
     }
 
+
+    // sendSseEvent() —— SSE 事件推送
+    // 权限是 protected 子类能直接访问，且子类可以重写
     protected void sendSseEvent(String type, String data) {
         if(sseEmitter != null) {
             try{
@@ -219,19 +255,31 @@ public abstract class BaseAgent {
             } catch(IOException e) {
                 sseEmitter.completeWithError(e);
                 log.error("BaseAgent 的推送失败: {}",e.getMessage());
+            } catch(IllegalStateException e) {
+                log.warn("SSE emitter 已完成，忽略后续推送: {}", e.getMessage());
             }
         }
     }
 
+    // 由 abstract 修饰的方法，子类必须重写
     public abstract String step();
 
+    // 有 abstract 修饰的方法，子类必须重写
     public abstract String stepStream();
 
+    // 子类可覆盖以提供最终答案
+    protected String getFinalAnswer() {
+        return null;
+    }
+
+    // 这里用 protected 是因为有的类可以重写，有的不用重写，如果用 abstract 修饰，代表必须重写
     protected void persistMessages(String conversationId) {
         // default no-op, override in subclasses to persist messages
     }
 
-     void cleanUp(){
+    protected void cleanUp(){
+        if (cleaned) return;
+        cleaned = true;
         state = AgentState.IDLE;
         messageList.clear();
         currentStep = 0;

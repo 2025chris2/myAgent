@@ -31,6 +31,8 @@ public class PlanAppDocumentLoader {
 
     public List<Document> loadMarkDown() {
         List<Document> allDocuments = new ArrayList<>();
+        
+        // 外层 try 的作用：保护“资源扫描阶段”
         try {
             Resource[] resources = resourcePatternResolver.getResources("classpath:docs/*.md");
             log.info("=== 开始加载所有 md 文档，总数量：{} ===", resources.length);
@@ -41,6 +43,8 @@ public class PlanAppDocumentLoader {
                     continue;
                 }
                 log.info("正在处理文档：{}", fileName);
+
+                // 内层 try 的作用：保护“文档解析阶段”
                 try {
                     MarkdownDocumentReaderConfig config = MarkdownDocumentReaderConfig.builder()
                             .withHorizontalRuleCreateDocument(true)

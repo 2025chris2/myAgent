@@ -1,9 +1,10 @@
 package com.tzl.llongagent.controller;
 
-import com.tzl.llongagent.agent.llongManus;
+import com.tzl.llongagent.agent.LlongManus;
 import com.tzl.llongagent.app.PlanApp;
 import com.tzl.llongagent.service.ConversationService;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -18,7 +19,7 @@ public class AiController {
     private PlanApp planApp;
 
     @Resource
-    private llongManus llongManus;
+    private ObjectProvider<LlongManus> llongManusProvider;
 
     @Resource
     private ConversationService conversationService;
@@ -64,7 +65,7 @@ public class AiController {
         return sseEmitter;
     }
 
-    // ========== llongManus Agent 接口 ==========
+    // ========== LlongManus Agent 接口 ==========
 
     @GetMapping("/manus/chat")
     public SseEmitter doChatWithManus(
@@ -72,6 +73,7 @@ public class AiController {
             @RequestParam(required = false) String conversationId,
             Authentication authentication) {
         String convId = resolveConversationId(authentication, conversationId);
-        return llongManus.runStream(userMessage, convId);
+        LlongManus manus = llongManusProvider.getObject();
+        return manus.runStream(userMessage, convId);
     }
 }

@@ -19,29 +19,32 @@ public abstract class ReActAgent extends BaseAgent {
 
     public abstract boolean thinkStream();
 
-    public abstract String actSteam();
+    public abstract String actStream();
 
     @Override
     public String step() {
-//        try{
-            boolean shouldAct = think();
-            if(!shouldAct) {
-                return "思考完成 - 无需行动！";
-            }
-            return act();
-//        } catch(Exception e) {
-//            // 打印异常日志
-//            e.printStackTrace();
-//            return "ReAct 步骤执行失败" + e.getMessage();
-//        }
+
+        // 这里没有加　try - catch　
+        // 因为父类 BaseAgent　需要拿到报错，才能停止，才能把 state = AgentState.ERROR
+        // 如果这里把报错吞了，那么上层拿不到报错，就无法因为错误而中断循环!
+
+        boolean shouldAct = think();
+        if(!shouldAct) {
+            return "思考完成 - 无需行动！";
+        }
+        return act();
+
     }
 
     @Override
     public String stepStream(){
+
         boolean shouldAct = thinkStream();
         if(!shouldAct) {
             return "思考完成 - 无需行动！";
         }
-        return actSteam();
+        return actStream();
+        
     }
+
 }

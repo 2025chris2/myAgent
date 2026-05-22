@@ -6,6 +6,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -14,11 +16,12 @@ import java.util.List;
  * 龙的 AI 超级智能体（拥有自主规划能力，可以直接使用）
  */
 @Component
-public class llongManus extends ToolCallAgent{
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public class LlongManus extends ToolCallAgent{
 
     private final MessageService messageService;
 
-    public llongManus(ToolCallback[] allTools, DeepSeekChatModel deepseekChatModel,
+    public LlongManus(ToolCallback[] allTools, DeepSeekChatModel deepseekChatModel,
                       MessageService messageService) {
         super(allTools);
         this.messageService = messageService;

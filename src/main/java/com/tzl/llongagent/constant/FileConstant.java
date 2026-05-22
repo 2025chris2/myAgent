@@ -16,4 +16,5 @@ public class FileConstant {
     public String getConversationDir(String conversationId) {
         return fileSaveDir + "/" + conversationId;
     }
+    
 }
