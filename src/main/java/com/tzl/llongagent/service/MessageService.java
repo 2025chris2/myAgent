@@ -17,6 +17,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class MessageService {
 
+    // 通过注解进行注入
     private final MessageRepository messageRepository;
 
     @Transactional

@@ -10,6 +10,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
@@ -18,6 +19,7 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -26,22 +28,24 @@ import java.util.stream.Collectors;
 public class ToolCallAgent extends ReActAgent {
 
     // 注入所有的工具
-    private ToolCallback[] availableTools;
+    // final ToolCallback[] availableTools 只能保证引用不可变（不能让 availableTools 指向另一个新数组）
+    // 但数组内部的元素仍然可以被修改
+    private final ToolCallback[] availableTools;
 
+    // 我们要在不同的函数里面使用，所以这里把作用域提升到提升为类的成员变量（实例字段）
     // 获取聊天响应，此聊天响应有要调用的工具
     private ChatResponse toolCallChatResponse;
+
+    // 我们要在不同的函数里面使用，所以这里把作用域提示到全局了
+    // 禁用 SpringAI 内置的工具调用机制，手动控制调用工具
+    private ChatOptions chatOptions;
 
     // 工具调用管理者
     private final ToolCallingManager toolCallingManager;
 
-    // 禁用 SpringAI 内置的工具调用机制，手动控制调用工具
-    private ChatOptions chatOptions;
-
-    // 维护的智能体的最后一次消息，既最终的标准消息
-    private String finalAnswer;
-
     public ToolCallAgent(ToolCallback[] toolCallbacks) {
 
+        // 调用父类的构造函数，进行一些初始化
         super();
 
         this.availableTools = toolCallbacks;
@@ -55,276 +59,182 @@ public class ToolCallAgent extends ReActAgent {
                 .build();
     }
 
-    /***
-     * 处理当前状态并决定下一步行动
-     *
-     * @return 是否需要执行行动
-     */
     @Override
     public boolean think() {
-
-        // 获取维护的上下文记忆列表,方便操作
-        List<Message> messageList = getMessageList();
-
-        Prompt prompt = new Prompt(messageList, chatOptions);
-
-        // 2.调用 AI 大模型，获取工具调用列表
-        try{
-
-            // 拿到 AI 的响应，响应里面有需要调用的工具
-            ChatResponse chatResponse = getDeepseekChatClient()
-                    // 用户的消息，封装在上面的prompt中,所以这算是user()
-                    .prompt(prompt)
-                    .system(getSYSTEM_PROMPT())
-                    .toolCallbacks(availableTools)
-                    .call()
-                    .chatResponse();
-
-            this.toolCallChatResponse = chatResponse;
-
-            if (chatResponse == null) {
-                throw new IllegalStateException("ChatClient returned null response");
-            }
-            AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
-
-            // 获取要调用的工具
-            List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
-
-            // 输出提示消息
-            String result = assistantMessage.getText();
-            log.info("{}的思考: {}", getName(), result);
-            log.info("{}选择了: {}个工具来使用", getName(), toolCalls.size());
-
-            // 格式化工具的调用信息
-            String toolCallInfo = toolCalls.stream()
-                    .map(toolCall -> String.format("工具名称: %s, 参数: %s", toolCall.name(), toolCall.arguments()))
-                    .collect(Collectors.joining("\n"));
-            log.info(toolCallInfo);
-
-            // 如果不需要调用工具
-            if(toolCalls.isEmpty()) {
-
-                this.finalAnswer = result;
-                setState(AgentState.FINISHED);
-
-                // 由于我们劫持了此次 AI 的返回信息,并进行了一系列操作
-                // 当不需要调用工具时, 手动添加 AI 的回复消息进入 上下文列表中
-                getMessageList().add(assistantMessage);
-                return false;
-
-            } else{
-
-                // 需要调用工具，返回 true
-                return true;
-
-            }
-
-        }catch (Exception e) {
-
-            log.error(getName() + "的思考过程遇到了问题", e);
-
-            this.finalAnswer = "AI 处理时遇到了问题: " + e.getMessage();
-
-            // 如果报错也是 AI 的回答，需要以 AI 的身份添加进 上下文消息列表中
-            messageList.add(new AssistantMessage("AI 处理时遇到了问题"));
-
-            setState(AgentState.FINISHED);
-            return false;
-        }
-    }
-
-    /***
-     * 执行工具调用并处理结果
-     * @return 执行结果
-     */
-    @Override
-    public String act() {
-
-        if(toolCallChatResponse == null || !toolCallChatResponse.hasToolCalls())
-            return "不需要调用工具";
-
-        // 在 UserMessage和ChatClient中间的一层,Prompt = 上下文加 ChatOptions
-        Prompt prompt = new Prompt(getMessageList(), chatOptions);
-
-        // 调用工具
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
-
-        // 记录消息上下文
-        // 记录消息上下文，conversationHistory 已经包含了助手消息和工具调用返回的结果
-        setMessageList(toolExecutionResult.conversationHistory());
-
-        Object lastMessage = CollUtil.getLast(toolExecutionResult.conversationHistory());
-        if (!(lastMessage instanceof ToolResponseMessage toolResponseMessage)) {
-            log.error("conversationHistory 最后一条消息不是 ToolResponseMessage: {}", lastMessage);
-            setState(AgentState.FINISHED);
-            return "工具执行结果解析失败";
-        }
-
-        // 判断是否调用了终止工具
-        boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
-                .anyMatch(response -> response.name().equals("doTerminate"));
-
-        // 如果调用了终止工具，那么必须修改本 Agent 的状态
-        if(terminateToolCalled) {
-            String finalText = toolCallChatResponse.getResult().getOutput().getText();
-            if (StrUtil.isNotBlank(finalText)) {
-                this.finalAnswer = finalText;
-            }
-            setState(AgentState.FINISHED);
-        }
-
-        // 从工具调用结束后的信息中，格式化数据
-        String results = toolResponseMessage.getResponses().stream()
-                .map(response -> "工具 " + response.name() + " 返回的结果：" + response.responseData())
-                .collect(Collectors.joining("\n"));
-
-        // 打印格式化的数据
-        log.info(results);
-
-        // 返回格式化的数据
-        return results;
-
+        return thinkInternal(false);
     }
 
     @Override
     public boolean thinkStream() {
+        return thinkInternal(true);
+    }
 
-        // 获取维护的上下文记忆列表,方便操作
-        List<Message> messageList = getMessageList();
+    // thinkInter: 就是和 AI LLM进行对话，获取结果，围绕结果进行展开的
+    /***
+     * 思考阶段：调用大模型，决定是否需要调用工具
+     * @param stream 是否为流式模式
+     * @return 是否需要执行行动
+     */
+    // 权限是 private , 内部函数
+    private boolean thinkInternal(boolean stream) {
 
-        Prompt prompt = new Prompt(messageList, chatOptions);
+    // ========== 1. 准备上下文和请求 ==========
+    List<Message> messageList = getMessageList();
+    Prompt prompt = new Prompt(messageList, chatOptions);
 
-        // 2.调用 AI 大模型，获取工具调用列表
-        try{
+    // ========== 2. 调用大模型 & 处理响应 ==========
+    try {
+        ChatResponse chatResponse = getDeepseekChatClient()
+                .prompt(prompt)
+                .system(getSYSTEM_PROMPT())
+                // 如果工具为空，则取消下面的注释
+                // .toolCallbacks(availableTools)
+                .call()
+                .chatResponse();
 
-            // 拿到 AI 的响应，响应里面有需要调用的工具
-            ChatResponse chatResponse = getDeepseekChatClient()
-                    // 用户的消息，封装在上面的prompt中,所以这算是user()
-                    .prompt(prompt)
-                    .system(getSYSTEM_PROMPT())
-                    .toolCallbacks(availableTools)
-                    .call()
-                    .chatResponse();
+        this.toolCallChatResponse = chatResponse;
 
-            this.toolCallChatResponse = chatResponse;
+        if (toolCallChatResponse == null) {
+            throw new IllegalStateException("ChatClient returned null response");
+        }
 
-            if (chatResponse == null) {
-                throw new IllegalStateException("ChatClient returned null response");
-            }
-            AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
+        // ========== 3. 提取 AI 回复并保存到历史上下文 ==========
+        AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
+        messageList.add(assistantMessage);
 
-            String result = assistantMessage.getText();
+        // ========== 4. 解析回复内容 ==========
+        String result = assistantMessage.getText();
+        List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
 
-            // 获取要调用的工具
-            List<AssistantMessage.ToolCall> toolCalls = assistantMessage.getToolCalls();
+        log.info("{}的思考: {}", getName(), result);
+        log.info("{}选择了: {}个工具来使用", getName(), toolCalls.size());
 
-            log.info("{}的思考: {}", getName(), result);
-            log.info("{}选择了: {}个工具来使用", getName(), toolCalls.size());
-
-            // 如果不需要调用工具，直接作为最终答案
-            if(toolCalls.isEmpty()) {
-
-                this.finalAnswer = result;
-
-                setState(AgentState.FINISHED);
-
-                sendSseEvent("final_answer", finalAnswer);
-
-                // 由于我们劫持了此次 AI 的返回信息,并进行了一系列操作
-                // 当不需要调用工具时, 手动添加 AI 的回复消息进入 上下文列表中
-                getMessageList().add(assistantMessage);
-                return false;
-
-            } else{
-
-                // 有工具要调用——此时 AI 的文本是推理过程，发送到思考面板
-                if(StrUtil.isNotBlank(result)) {
-                    sendSseEvent("thinking", result);
-                }
-
-                // 格式化工具的调用信息
-                String toolCallInfo = toolCalls.stream()
-                        .map(toolCall -> String.format("工具名称: %s, 参数: %s", toolCall.name(), toolCall.arguments()))
-                        .collect(Collectors.joining("\n"));
-                log.info(toolCallInfo);
-
-                sendSseEvent("tool_call", "准备调用工具\n" + toolCallInfo);
-
-                // 需要调用工具，返回 true
-                return true;
-
-            }
-
-        }catch (Exception e) {
-
-            log.error(getName() + "的思考过程遇到了问题", e);
-
-            this.finalAnswer = "AI 处理时遇到了问题: " + e.getMessage();
-
-            // 如果报错也是 AI 的回答，需要以 AI 的身份添加进 上下文消息列表中
-            messageList.add(new AssistantMessage("AI 处理时遇到了问题"));
-
+        // ========== 5. 决策：是否需要调用工具 ==========
+        if (toolCalls.isEmpty()) {
+            // 5.1 无需工具：直接结束，给出最终答案
+            // 对于非流式来说，最终答案是在 BaseAgent 中进行提取了
+            this.finalAnswer = result;
             setState(AgentState.FINISHED);
-            sendSseEvent("error", "思考过程出错");
+
+            if (stream) {
+                // 对于流式来说，答案必须由 sendSseEvent 来推送
+                sendSseEvent("final_answer", finalAnswer);
+            }
             return false;
         }
+
+        // 5.2 需要工具：进入行动阶段，通知前端准备调用
+        if (stream && StrUtil.isNotBlank(result)) {
+            sendSseEvent("thinking", result);
+        }
+
+        String toolCallInfo = toolCalls.stream()
+                .map(toolCall -> String.format("工具名称: %s, 参数: %s", toolCall.name(), toolCall.arguments()))
+                .collect(Collectors.joining("\n"));
+        log.info(toolCallInfo);
+
+        if (stream) {
+            sendSseEvent("tool_call", "准备调用工具\n" + toolCallInfo);
+        }
+        return true;
+
+    // ========== 6. 异常处理 ==========
+    } catch (Exception e) {
+        log.error("{}的思考过程遇到了问题", getName(), e);
+
+        this.finalAnswer = "AI 处理时遇到了问题: " + e.getMessage();
+        messageList.add(new AssistantMessage("AI 处理时遇到了问题"));
+
+        setState(AgentState.FINISHED);
+        if (stream) {
+            sendSseEvent("error", "思考过程出错");
+        }
+        return false;
+    }
+}
+
+    @Override
+    public String act() {
+        return actInternal(false);
     }
 
     @Override
     public String actStream() {
-
-        if(toolCallChatResponse == null || !toolCallChatResponse.hasToolCalls())
-            return "不需要调用工具";
-
-        // 在 UserMessage和ChatClient中间的一层,Prompt = 上下文加 ChatOptions
-        Prompt prompt = new Prompt(getMessageList(), chatOptions);
-
-        // 调用工具
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
-
-        // 记录消息上下文
-        // 记录消息上下文，conversationHistory 已经包含了助手消息和工具调用返回的结果
-        setMessageList(toolExecutionResult.conversationHistory());
-
-        Object lastMessage = CollUtil.getLast(toolExecutionResult.conversationHistory());
-        if (!(lastMessage instanceof ToolResponseMessage toolResponseMessage)) {
-            log.error("conversationHistory 最后一条消息不是 ToolResponseMessage: {}", lastMessage);
-            setState(AgentState.FINISHED);
-            sendSseEvent("error", "工具执行结果解析失败");
-            return "工具执行结果解析失败";
-        }
-
-        // 判断是否调用了终止工具
-        boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
-                .anyMatch(response -> response.name().equals("doTerminate"));
-
-        // 如果调用了终止工具，把 AI 的回复文本作为 final_answer 推送
-        if(terminateToolCalled) {
-            String finalText = toolCallChatResponse.getResult().getOutput().getText();
-            if(StrUtil.isNotBlank(finalText)) {
-                this.finalAnswer = finalText;
-                sendSseEvent("final_answer", finalText);
-            }
-            setState(AgentState.FINISHED);
-        }
-
-        // 从工具调用结束后的信息中，格式化数据
-        String results = toolResponseMessage.getResponses().stream()
-                .map(response -> "工具 " + response.name() + " 返回的结果：" + response.responseData())
-                .collect(Collectors.joining("\n"));
-
-        sendSseEvent("tool_result", results);
-
-        // 打印格式化的数据
-        log.info(results);
-
-        // 返回格式化的数据
-        return results;
-
-
+        return actInternal(true);
     }
 
-    protected void cleanUp(){
+    // 根据 thinkInternal 的指令，进行操作，行动，并把结果给返回了
+    /***
+     * 执行阶段：调用工具并处理结果
+     * @param stream 是否为流式模式
+     * @return 执行结果
+     */
+    // 权限是 private ,内部函数
+    private String actInternal(boolean stream) {
+
+    // ========== 1. 执行工具调用 ==========
+    Prompt prompt = new Prompt(getMessageList(), chatOptions);
+    ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
+
+    // ========== 2. 校验 conversationHistory 合法性 ==========
+    List<Message> conversationHistory = toolExecutionResult.conversationHistory();
+    Object lastMessage = CollUtil.getLast(conversationHistory);
+
+    // instanceof 这里不仅是判断了 toolResponseMessage　的类型，也把 toolResponseMessage　的引用指向了 lastMessage
+    if (!(lastMessage instanceof ToolResponseMessage toolResponseMessage)) {
+        log.error("conversationHistory 最后一条消息不是 ToolResponseMessage: {}", lastMessage);
+
+        setState(AgentState.FINISHED);
+        this.finalAnswer = "工具执行结果解析失败";
+
+        if (stream) {
+            sendSseEvent("error", "工具执行结果解析失败");
+        }
+        return this.finalAnswer;
+    }
+
+    // ========== 3. 更新消息上下文 ==========
+    setMessageList(conversationHistory);
+
+    // ========== 4. 提取核心数据（只做读取，不产生副作用） ==========
+    boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
+            .anyMatch(response -> response.name().equals("doTerminate"));
+
+    String finalText = null;
+    if (terminateToolCalled) {
+        finalText = Optional.ofNullable(toolCallChatResponse)
+                .map(ChatResponse::getResult)
+                .map(Generation::getOutput)
+                .map(AssistantMessage::getText)
+                .orElse(null);
+    }
+
+    // 在 instanceof 的判断中，不仅判断了类型还把 toolResponseMessage　指向了 lastMessage
+    String results = toolResponseMessage.getResponses().stream()
+            .map(response -> "工具 " + response.name() + " 返回的结果：" + response.responseData())
+            .collect(Collectors.joining("\n"));
+
+    // ========== 5. 更新内部状态（finalAnswer、State） ==========
+    if (terminateToolCalled) {
+        if (StrUtil.isNotBlank(finalText)) {
+            this.finalAnswer = finalText;
+        }
+        setState(AgentState.FINISHED);
+    }
+
+    // ========== 6. 统一输出（SSE → 日志 → 返回） ==========
+    if (stream) {
+        if (terminateToolCalled && StrUtil.isNotBlank(this.finalAnswer)) {
+            sendSseEvent("final_answer", this.finalAnswer);
+        }
+        sendSseEvent("tool_result", results);
+    }
+
+    log.info(results);
+    return results;
+}
+
+    protected void cleanUp() {
         super.cleanUp();
         toolCallChatResponse = null;
     }

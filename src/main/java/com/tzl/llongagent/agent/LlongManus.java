@@ -1,6 +1,7 @@
 package com.tzl.llongagent.agent;
 
-import com.tzl.llongagent.advisor.llongLoggerAdvisor;
+import com.tzl.llongagent.advisor.LlongLoggerAdvisor;
+import com.tzl.llongagent.advisor.ReReadingAdvisor;
 import com.tzl.llongagent.service.MessageService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
@@ -54,14 +55,24 @@ public class LlongManus extends ToolCallAgent{
         // 初始化聊天客户端
         // 这里工具的传入在ToolCallAgent里面实现的,这里不用再次传入allTools
         ChatClient deepseekChatClient = ChatClient.builder(deepseekChatModel)
-                .defaultAdvisors(new llongLoggerAdvisor())
+                .defaultAdvisors(new LlongLoggerAdvisor(), new ReReadingAdvisor())
                 .build();
 
         // 在上上层中，我们定义了 ChatClient，在这里我们传入
-        this.setDeepseekChatClient(deepseekChatClient);
+        setDeepseekChatClient(deepseekChatClient);
 
     }
 
+    // ▎ 持久化发生是LlongManus，所以这里必须重写对么
+//     ● 对，必须重写。逻辑链：
+// ▏ 
+// ▏ - BaseAgent 只管执行流程，不知道也不应该知道子类要不要持久化
+// ▏ - 默认 persistMessages 是 no-op（空操作）
+// ▏ - LlongManus 是唯一需要把对话消息写入 PostgreSQL
+// ▏   的子类，所以重写钩子，注入 MessageService.replaceMessages()
+// ▏ 
+// ▏ 如果不重写，LlongManus 每次执行完 run() / runStream() 后 finally
+// ▏ 块调用的就是空的 persistMessages，消息不会落库，刷新页面对话就丢了。
     @Override
     protected void persistMessages(String conversationId) {
         List<Message> messages = getMessageList();

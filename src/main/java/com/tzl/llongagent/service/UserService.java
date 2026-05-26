@@ -19,6 +19,12 @@ public class UserService {
     private final JwtTokenProvider jwtTokenProvider;
 
     public String register(String username, String rawPassword) {
+        if (username == null || username.isBlank()) {
+            throw new AuthException("用户名不能为空", HttpStatus.BAD_REQUEST);
+        }
+        if (rawPassword == null || rawPassword.length() < 6) {
+            throw new AuthException("密码至少需要6位", HttpStatus.BAD_REQUEST);
+        }
         if (userRepository.existsByUsername(username)) {
             throw new AuthException("账号已被使用", HttpStatus.CONFLICT);
         }

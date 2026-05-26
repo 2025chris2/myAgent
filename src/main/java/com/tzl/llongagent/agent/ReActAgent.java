@@ -28,6 +28,10 @@ public abstract class ReActAgent extends BaseAgent {
         // 因为父类 BaseAgent　需要拿到报错，才能停止，才能把 state = AgentState.ERROR
         // 如果这里把报错吞了，那么上层拿不到报错，就无法因为错误而中断循环!
 
+
+        // 这里是 ReAct 的循环，循环中父类的 BaseAgent 的 for 循环 中实现的
+        // 这里思考与判断，是否进行一轮
+        // 退出循环的关键是 maxStep 和 AgentState 的状态
         boolean shouldAct = think();
         if(!shouldAct) {
             return "思考完成 - 无需行动！";

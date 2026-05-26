@@ -1,7 +1,7 @@
 package com.tzl.llongagent.app;
 
 import com.tzl.llongagent.advisor.ReReadingAdvisor;
-import com.tzl.llongagent.advisor.llongLoggerAdvisor;
+import com.tzl.llongagent.advisor.LlongLoggerAdvisor;
 import com.tzl.llongagent.chatmemoryrepository.PgChatMemoryRepository;
 import com.tzl.llongagent.rag.PlanAppQueryRewrite;
 import com.tzl.llongagent.rag.PlanAppRAGCustomAdvisor;
@@ -76,7 +76,7 @@ public class PlanApp {
         ReReadingAdvisor reReadingAdvisor = new ReReadingAdvisor();
 
         // 自定义的日志打印顾问
-        llongLoggerAdvisor llongLoggerAdvisor = new llongLoggerAdvisor();
+        LlongLoggerAdvisor llongLoggerAdvisor = new LlongLoggerAdvisor();
 
         // 聊天记忆存储仓库
         ChatMemory pgChatMemory = MessageWindowChatMemory.builder()
