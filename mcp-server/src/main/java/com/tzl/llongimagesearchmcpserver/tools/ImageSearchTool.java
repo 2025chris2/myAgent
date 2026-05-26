@@ -7,8 +7,8 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
+import org.springaicommunity.mcp.annotation.McpTool;
+import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -26,9 +26,9 @@ public class ImageSearchTool {
 
     private static final String API_URL = "https://api.pexels.com/v1/search";
 
-    @Tool(description = "search image from web")
+    @McpTool(name = "searchImage", description = "search image from web")
     public String searchImage(
-            @ToolParam(description = "search query keyword") String query) {
+            @McpToolParam(description = "search query keyword") String query) {
         try {
             List<String> imageUrls = searchMediumImage(query);
             if (imageUrls.isEmpty()) {

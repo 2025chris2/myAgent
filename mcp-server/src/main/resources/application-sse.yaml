@@ -5,9 +5,12 @@ spring:
         name: llong-image-search-mcp-server
         version: 0.0.1
         enabled: true
-        sse-endpoint: /sse
         type: SYNC
-        stdio: false
+        annotation-scanner:
+          enabled: true
+        capabilities:
+          tool: true
+        sse-message-endpoint: /mcp/message
 
 server:
   port: 8127

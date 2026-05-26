@@ -3,6 +3,7 @@ import { ref, watch, nextTick, computed } from 'vue'
 import { useChatStore } from '../stores/chat.js'
 import MessageBubble from './MessageBubble.vue'
 import { Loading } from '@element-plus/icons-vue'
+import { marked } from 'marked'
 
 const chatStore = useChatStore()
 const listRef = ref(null)
@@ -39,30 +40,82 @@ function scrollToBottom() {
 
 const hasMessages = computed(() => messages.value && messages.value.length > 0)
 
-const welcomeContent = computed(() => {
+const welcomeHtml = computed(() => {
   if (chatStore.chatMode === 'agent') {
-    return {
-      title: 'Super Agent',
-      text: '大家好，我是 EternalChristmas，你的超级智能体，我能干寻觅的所有事，并且还能做它不能做的事，给我提出要求，我就能一直执行，直到结束。',
-    }
+    return marked.parse(`
+## 🤖 Super Agent
+
+**Agent 的核心，是让大模型从一个只会聊天的"大脑"，进化成能自主完成任务的"数字员工"。**
+
+这个核心建立在三个互为支撑的支点上：
+
+---
+
+### 🔄 感知 — 行动闭环
+
+它不是被动问答，而是在 **观察 → 决策 → 执行 → 观察反馈** 中自主循环。想再多不如真正调用一次工具去验证和推进。
+
+### 🧠 推理与规划的大脑
+
+面对"帮我研究新能源车"这样的模糊目标，能自己拆解成 **搜政策 → 找头部公司 → 对比财报 → 总结趋势** 等步骤，并在某一步失败时自动修正重试。
+
+### 🛠 使用工具的手脚
+
+能真实调用搜索引擎、代码解释器、外部 API 等，把想法落地为看得见的结果，而不只停留在给建议。
+
+---
+
+这三点之上，真正的灵魂是 **目标导向的自主性** —— 用户只需说"做什么"，完全不用教"怎么做"，一切由它自己想办法完成。
+
+> **一句话总结：Agent = 能规划反思的大脑 + 能实际执行的手脚，在一个自主闭环中持续逼近目标。**
+    `.trim())
   }
-  return {
-    title: '寻觅聊天',
-    text: '大家好，我是资深旅行定制师 EternalChristmas～ 接下来我会根据你提供的信息生成详尽旅行报告，核心规则如下：\n\n先核验你给出的目的地、出行日期（至少精确到月份）、出行天数，明确呼应已提供的信息，只追问缺失内容，不重复你已说过的话；报告标题需按"{地点}旅行指南 - {月份/日期} {天数}日行程"格式撰写；内容必须包含季节性贴士、每日详细行程（分上下午晚上，注明时间、游览时长、交通及耗时）、深度推荐（含推荐理由、拍照机位等）、美食清单（分景区/市区，附店铺、人均、招牌菜、位置）、住宿方案（不同价位，说明优缺点）、预算参考（门票、交通等费用区间）、注意事项（结合季节和地点）；语言会亲切实用，像朋友分享行程。另外，要是你没调用工具，我也会告诉你可使用的工具哦。\n\n需要我先帮你核验已有的旅行信息，确认是否缺失出行日期或天数吗？',
-  }
+
+  // 寻觅聊天
+  return marked.parse(`
+## 🤖 寻觅聊天
+
+大家好，我是资深旅行定制师 **EternalChristmas**～ 接下来我会根据你提供的信息生成详尽旅行报告。
+
+### 报告规则
+
+- **信息核验**：先确认目的地、出行日期（精确到月份）、天数，只追问缺失项
+- **标题格式**：\`{地点}旅行指南 - {月份/日期} {天数}日行程\`
+- **内容涵盖**：季节性贴士、每日详细行程（分上下午晚上）、深度推荐（含拍照机位）、美食清单（景区/市区，附店铺、人均、招牌菜）、住宿方案（多价位）、预算参考、注意事项
+- **语言风格**：亲切实用，像朋友分享行程
+
+---
+
+### 🛠️ 工具调用
+
+#### \`tool_main:\`（7 个 — Java 主程序）
+
+| 工具 | 功能 |
+|------|------|
+| FileOperationTool | 读写文件，生成 Markdown |
+| PDFGenerationTool | 生成 PDF 文件 |
+| TerminalOperationTool | 操作服务器终端（Linux/Windows） |
+| TerminateTool | 终止工具调用 |
+| WebSearchTool | Tavily 搜索，内容适配 AI |
+| WebScrapingTool | 网页内容深度抓取 |
+| ResourceDownloadTool | 下载代码、图片等资源 |
+
+#### \`tool_mcp:\`（13 个 — MCP 服务）
+
+- **ImageSearch**（Pexels）— 图片搜索
+- **Amap Maps**（高德地图 12 工具）— 周边搜索 / 驾车导航 / 公交规划 / 步行路线 / 骑行路线 / 距离计算 / 地理编码 / IP 定位 / 逆地理编码 / 详情查询 / 文本搜索 / 天气查询
+
+---
+
+需要我先帮你核验已有的旅行信息，确认是否缺失出行日期或天数吗？
+  `.trim())
 })
 </script>
 
 <template>
   <div ref="listRef" class="message-list">
     <div v-if="!hasMessages && !chatStore.streaming" class="welcome">
-      <div class="welcome-bubble">
-        <div class="welcome-avatar">AI</div>
-        <div class="welcome-body">
-          <div class="welcome-title">{{ welcomeContent.title }}</div>
-          <div class="welcome-text">{{ welcomeContent.text }}</div>
-        </div>
-      </div>
+      <div class="welcome-content markdown-body" v-html="welcomeHtml" />
     </div>
 
     <div v-else class="messages-container">
@@ -89,53 +142,22 @@ const welcomeContent = computed(() => {
 
 .welcome {
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  height: 100%;
-  padding-top: 60px;
-}
-
-.welcome-bubble {
-  display: flex;
-  gap: 12px;
-  max-width: 720px;
-}
-
-.welcome-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-  background: var(--primary-light);
-  color: var(--primary-dark);
+  height: 100%;
+  padding: 40px 24px;
 }
 
-.welcome-body {
-  background: var(--bubble-ai);
-  border: 1px solid var(--bubble-ai-border);
-  border-radius: 12px;
-  border-bottom-left-radius: 4px;
-  padding: 16px 20px;
-}
-
-.welcome-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--primary-dark);
-  margin-bottom: 10px;
-}
-
-.welcome-text {
-  font-size: 14px;
-  line-height: 1.8;
-  color: var(--text-dark);
-  white-space: pre-wrap;
-  word-break: break-word;
+.welcome-content {
+  max-width: 720px;
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 32px 36px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(139, 126, 200, 0.08);
 }
 
 .messages-container {
@@ -152,4 +174,8 @@ const welcomeContent = computed(() => {
   color: var(--primary);
   font-size: 13px;
 }
+</style>
+
+<style>
+@import '../styles/markdown.css';
 </style>

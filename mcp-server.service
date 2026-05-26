@@ -1,0 +1,19 @@
+[Unit]
+Description=llongAgent MCP Server (SSE)
+After=network.target
+
+[Service]
+Type=simple
+User=llongagent
+WorkingDirectory=/opt/llongagent
+ExecStart=/usr/bin/java -jar /opt/llongagent/mcp-servers/llong-image-search-mcp-server-0.0.1-SNAPSHOT.jar
+ExecStop=/bin/kill -15 $MAINPID
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-server
+
+[Install]
+WantedBy=multi-user.target

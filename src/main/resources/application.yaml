@@ -65,16 +65,6 @@ spring:
     mcp:
       client:
         enabled: true
-        stdio:
-          connections:
-            image-search:
-              # command: java
-              # args:
-              #   - -Dspring.ai.mcp.server.stdio=true
-              #   - -Dspring.main.web-application-type=none
-              #   - -Dlogging.pattern.console=
-              #   - -jar
-              #   - /opt/llongagent/mcp-servers/llong-image-search-mcp-server-0.0.1-SNAPSHOT.jar
 
     vectorstore:
       pgvector:
