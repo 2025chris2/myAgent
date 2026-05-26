@@ -1,22 +1,22 @@
 {
   "mcpServers": {
-    "amap-maps": {
+    "baidu-map": {
       "command": "npx",
-      "args": ["-y", "@amap/amap-maps-mcp-server"],
+      "args": ["-y", "@baidumap/mcp-server-baidu-map"],
       "env": {
-        "AMAP_MAPS_API_KEY": "5a99881e272c7d2bedcf78cd93c6c539"
+        "BAIDU_MAP_API_KEY": "VIVaSxijTOtuQOymIfeCUySod13nUhMg"
       }
-    },
-    "llong-image-search-mcp-server": {
-      "command": "java",
-      "args": [
-        "-Dspring.ai.mcp.server.stdio=true",
-        "-Dspring.main.web-application-type=none",
-        "-Dlogging.pattern.console=",
-        "-jar",
-        "/home/tzl/my-project/mcp/llong-image-search-mcp-server-0.0.1-SNAPSHOT.jar"
-      ],
-      "env": {}
     }
+  },
+  "llong-image-search-mcp-server": {
+    "command": "java",
+    "args": [
+      "-Dspring.ai.mcp.server.stdio=true",
+      "-Dspring.main.web-application-type=none",
+      "-Dlogging.pattern.console=",
+      "-jar",
+      "/home/tzl/my-project/mcp/llong-image-search-mcp-server-0.0.1-SNAPSHOT.jar"
+    ],
+    "env": {}
   }
 }

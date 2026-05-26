@@ -98,9 +98,8 @@ public class ToolCallAgent extends ReActAgent {
             throw new IllegalStateException("ChatClient returned null response");
         }
 
-        // ========== 3. 提取 AI 回复并保存到历史上下文 ==========
+        // ========== 3. 提取 AI 回复 ==========
         AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
-        messageList.add(assistantMessage);
 
         // ========== 4. 解析回复内容 ==========
         String result = assistantMessage.getText();
@@ -111,8 +110,8 @@ public class ToolCallAgent extends ReActAgent {
 
         // ========== 5. 决策：是否需要调用工具 ==========
         if (toolCalls.isEmpty()) {
-            // 5.1 无需工具：直接结束，给出最终答案
-            // 对于非流式来说，最终答案是在 BaseAgent 中进行提取了
+            // 5.1 无需工具：保存回复并结束
+            messageList.add(assistantMessage);
             this.finalAnswer = result;
             setState(AgentState.FINISHED);
 

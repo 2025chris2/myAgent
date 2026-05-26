@@ -4,6 +4,12 @@ function getToken() {
   return localStorage.getItem('token')
 }
 
+function handleAuthFailure() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('username')
+  window.location.href = '/login'
+}
+
 export async function request(method, path, body, options = {}) {
   const headers = { ...(options.headers || {}) }
 
@@ -32,10 +38,7 @@ export async function request(method, path, body, options = {}) {
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
-      const message = typeof data === 'string' ? data : (data.message || data.error)
-      if (message) {
-        throw new Error(message)
-      }
+      handleAuthFailure()
       throw new Error('鉴权失败，请重新登录')
     }
     const message = typeof data === 'string' ? data : (data.message || data.error || '请求失败')
@@ -106,6 +109,7 @@ export function streamRequest(path, params = {}, { onChunk, onTypedEvent, onDone
     .then(async (res) => {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
+          handleAuthFailure()
           throw new Error('鉴权失败，请重新登录')
         }
         const text = await res.text()
